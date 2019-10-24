@@ -1,15 +1,21 @@
-# WWHRD? (What Would Henry Rollins Do?) [![Build Status](https://travis-ci.org/frapposelli/wwhrd.svg)](https://travis-ci.org/frapposelli/wwhrd) [![codecov](https://codecov.io/gh/frapposelli/wwhrd/branch/master/graph/badge.svg)](https://codecov.io/gh/frapposelli/wwhrd)
+# WWHRD? (What Would Henry Rollins Do?) [![CircleCI](https://circleci.com/gh/frapposelli/wwhrd/tree/master.svg?style=svg)](https://circleci.com/gh/frapposelli/wwhrd/tree/master) [![codecov](https://codecov.io/gh/frapposelli/wwhrd/branch/master/graph/badge.svg)](https://codecov.io/gh/frapposelli/wwhrd)
 
 ![WWHRD?](http://frapposelli.github.io/wwhrd/img/wwhrd.png)
 
 Have Henry Rollins check vendored licenses in your Go project.
 
-Please note that `wwhrd` **only checks** packages stored under `vendor/`.
+Please note that `wwhrd` **only checks** packages stored under `vendor/`, if you are using Go modules (`go mod`), you can add `go mod vendor` before running `wwhrd`, this will dump a copy of the vendored packages inside the local repo.
 
 ## Installation
 
 ```console
-$ go get -u github.com/frapposelli/wwhrd
+go get -u github.com/frapposelli/wwhrd
+```
+
+Using [Brew](https://brew.sh) on macOS:
+
+```console
+brew install frapposelli/tap/wwhrd
 ```
 
 ## Configuration file
@@ -33,6 +39,15 @@ exceptions:
 ```
 
 Having a license in the `blacklist` section will fail the check, unless the package is listed under `exceptions`.
+
+`exceptions` can also be listed as wildcards:
+
+```yaml
+exceptions:
+  - github.com/davecgh/go-spew/spew/...
+```
+
+Will make a blanket exception for all the packages under `github.com/davecgh/go-spew/spew`.
 
 Use it in your CI!
 

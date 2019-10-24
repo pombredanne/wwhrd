@@ -22,6 +22,10 @@ func mockGoPackageDir(t *testing.T, prefix string) (dir string, rm func()) {
 		log.Fatal(err)
 	}
 
+	if err := os.MkdirAll(filepath.Join(dir, "vendor/github.com/faux/package"), 0755); err != nil {
+		log.Fatal(err)
+	}
+
 	if err := os.MkdirAll(filepath.Join(dir, "vendor/github.com/fake/nested/inside/a/package"), 0755); err != nil {
 		log.Fatal(err)
 	}
@@ -34,9 +38,12 @@ func mockGoPackageDir(t *testing.T, prefix string) (dir string, rm func()) {
 		{".wwhrd.yml", []byte(mockConf)},
 		{".wwhrd-bl.yml", []byte(mockConfBL)},
 		{".wwhrd-ex.yml", []byte(mockConfEX)},
+		{".wwhrd-exwc.yml", []byte(mockConfEXWC)},
 		{".wwhrd-botched.yml", []byte(mockConfBotched)},
 		{filepath.Join("vendor/github.com/fake/package", "mockpkg.go"), []byte(mockVendor)},
-		{filepath.Join("vendor/github.com/fake/package", "LICENSE"), []byte(mockLicense)},
+		{filepath.Join("vendor/github.com/fake/package", "LICENSE"), []byte(mockLicense)}, // American English spelling
+		{filepath.Join("vendor/github.com/faux/package", "mockpkg.go"), []byte(mockVendor)},
+		{filepath.Join("vendor/github.com/faux/package", "LICENCE"), []byte(mockLicense)}, // British English spelling
 		{filepath.Join("vendor/github.com/fake/nested", "LICENSE"), []byte(mockLicense)},
 		{filepath.Join("vendor/github.com/fake/nested/inside/a/package", "mockpkg.go"), []byte(mockVendor)},
 	}
@@ -93,6 +100,12 @@ exceptions:
   - github.com/fake/package
   - github.com/fake/nested/inside/a/package
 `
+
+var mockConfEXWC = `---
+exceptions:
+  - github.com/fake/...
+`
+
 var mockConfBotched = `---
 whitelist
 - THISMAKESNOSENSE

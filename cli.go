@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/jessevdk/go-flags"
 	log "github.com/sirupsen/logrus"
@@ -12,13 +13,17 @@ type cliOpts struct {
 	List        `command:"list" alias:"ls" description:"List licenses"`
 	Check       `command:"check" alias:"chk" description:"Check licenses against config file"`
 	VersionFlag func() error `long:"version" short:"v" description:"Show CLI version"`
+
+	Quiet func() error `short:"q" long:"quiet" description:"quiet mode, do not log accepted packages"`
 }
 
 type List struct {
+	NoColor bool `long:"no-color" description:"disable colored output"`
 }
 
 type Check struct {
-	File string `short:"f" long:"file" description:"input file" default:".wwhrd.yml"`
+	File    string `short:"f" long:"file" description:"input file" default:".wwhrd.yml"`
+	NoColor bool   `long:"no-color" description:"disable colored output"`
 }
 
 const VersionHelp flags.ErrorType = 1961
@@ -29,6 +34,11 @@ var (
 	date    = "1961-02-13T20:06:35Z"
 )
 
+func setQuiet() error {
+	log.SetLevel(log.ErrorLevel)
+	return nil
+}
+
 func newCli() *flags.Parser {
 	opts := cliOpts{
 		VersionFlag: func() error {
@@ -37,6 +47,7 @@ func newCli() *flags.Parser {
 				Message: fmt.Sprintf("version %s\ncommit %s\ndate %s\n", version, commit, date),
 			}
 		},
+		Quiet: setQuiet,
 	}
 	parser := flags.NewParser(&opts, flags.HelpFlag|flags.PassDoubleDash)
 	parser.LongDescription = "What would Henry Rollins do?"
@@ -46,9 +57,13 @@ func newCli() *flags.Parser {
 
 func (l *List) Execute(args []string) error {
 
-	log.SetFormatter(&log.TextFormatter{ForceColors: true})
+	if l.NoColor {
+		log.SetFormatter(&log.TextFormatter{DisableColors: true})
+	} else {
+		log.SetFormatter(&log.TextFormatter{ForceColors: true})
+	}
 
-	root, err := os.Getwd()
+	root, err := rootDir()
 	if err != nil {
 		return err
 	}
@@ -60,11 +75,16 @@ func (l *List) Execute(args []string) error {
 	lics := GetLicenses(root, pkgs)
 
 	for k, v := range lics {
-
-		log.WithFields(log.Fields{
-			"package": k,
-			"license": v.Type,
-		}).Info("Found License")
+		if v.Recognized() {
+			log.WithFields(log.Fields{
+				"package": k,
+				"license": v.Type,
+			}).Info("Found License")
+		} else {
+			log.WithFields(log.Fields{
+				"package": k,
+			}).Warning("Did not find recognized license!")
+		}
 	}
 
 	return nil
@@ -72,7 +92,11 @@ func (l *List) Execute(args []string) error {
 
 func (c *Check) Execute(args []string) error {
 
-	log.SetFormatter(&log.TextFormatter{ForceColors: true})
+	if c.NoColor {
+		log.SetFormatter(&log.TextFormatter{DisableColors: true})
+	} else {
+		log.SetFormatter(&log.TextFormatter{ForceColors: true})
+	}
 
 	t, err := ReadConfig(c.File)
 	if err != nil {
@@ -80,7 +104,7 @@ func (c *Check) Execute(args []string) error {
 		return err
 	}
 
-	root, err := os.Getwd()
+	root, err := rootDir()
 	if err != nil {
 		return err
 	}
@@ -105,26 +129,69 @@ func (c *Check) Execute(args []string) error {
 
 	// Make a map out of the exceptions list
 	exceptions := make(map[string]bool)
+	exceptionsWildcard := make(map[string]bool)
 	for _, v := range t.Exceptions {
-		exceptions[v] = true
+		if strings.HasSuffix(v, "/...") {
+			exceptionsWildcard[strings.TrimRight(v, "/...")] = true
+		} else {
+			exceptions[v] = true
+		}
 	}
 
+PackageList:
 	for pkg, lic := range lics {
 		contextLogger := log.WithFields(log.Fields{
 			"package": pkg,
 			"license": lic.Type,
 		})
 
-		switch {
-		case whitelist[lic.Type] && !blacklist[lic.Type]:
+		// License is whitelisted and not specified in blacklist
+		if whitelist[lic.Type] && !blacklist[lic.Type] {
 			contextLogger.Info("Found Approved license")
-		case exceptions[pkg]:
-			contextLogger.Warn("Found exceptioned package")
-		default:
-			contextLogger.Error("Found Non-Approved license")
-			err = fmt.Errorf("Non-Approved license found")
+			continue PackageList
 		}
+
+		// if we have exceptions wildcards, let's run through them
+		if len(exceptionsWildcard) > 0 {
+			for wc, _ := range exceptionsWildcard {
+				if strings.HasPrefix(pkg, wc) {
+					// we have a match
+					contextLogger.Warn("Found exceptioned package")
+					continue PackageList
+				}
+			}
+		}
+
+		// match single-package exceptions
+		if _, exists := exceptions[pkg]; exists {
+			contextLogger.Warn("Found exceptioned package")
+			continue PackageList
+		}
+
+		// no matches, it's a non-approved license
+		contextLogger.Error("Found Non-Approved license")
+		err = fmt.Errorf("Non-Approved license found")
+
 	}
 
 	return err
+}
+
+func rootDir() (string, error) {
+	root, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	info, err := os.Lstat(root)
+	if err != nil {
+		return "", err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		root, err = os.Readlink(root)
+		if err != nil {
+			return "", err
+		}
+	}
+	return root, nil
 }
